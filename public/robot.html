@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3DOF Robot Arm Simulation</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.6/build/dat.gui.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script>
+      
+        // Setup the scene
+        const scene = new THREE.Scene();
+        const WIDTH = 1024;
+        const HEIGHT = 768;
+        const VIEW_ANGLE = 45;
+        const ASPECT = WIDTH / HEIGHT;
+        const NEAR = 0.1;
+        const FAR = 10000;
+        const camera = new THREE.PerspectiveCamera(VIEW_ANGLE, ASPECT, NEAR, FAR);
+        camera.position.z = 300;
+        camera.up = new THREE.Vector3( 0, 0, 1 );
+        scene.add(camera);
+        const renderer = new THREE.WebGLRenderer({antialias: true});
+        //slate700 color
+        renderer.setClearColor(0x1e1e1e, 1);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        function onWindowResize() {
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+          renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        window.addEventListener('resize', onWindowResize, false);
+        
+
+        // Create materials
+        const verticalStickMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 5 }); // Red
+        const rotatingStickMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 5 }); // Green
+        const extendingStickMaterial = new THREE.LineBasicMaterial({ color: 0x0000ff, linewidth: 5 }); // Blue
+
+        // Function to create a stick
+        function createStick(length, orientation = 'vertical', material) {
+            const points = [];
+            if (orientation === 'vertical') {
+                points.push(new THREE.Vector3(0, 0, 0));
+                points.push(new THREE.Vector3(0, 0, length)); // Aligned along Z-axis
+            } else { // horizontal
+                points.push(new THREE.Vector3(0, 0, 0));
+                points.push(new THREE.Vector3(length, 0, 0)); // Aligned along X-axis
+            }
+            const geometry = new THREE.TubeGeometry(
+              new THREE.CatmullRomCurve3(points),
+              512,// path segments
+              0.05,// THICKNESS
+              8, //Roundness of Tube
+              false //closed
+            );
+            return new THREE.Line(geometry, material);
+        }
+
+        // Create the robot arms
+        const verticalStick = createStick(1, 'vertical', verticalStickMaterial); // Vertical stick, red
+        const rotatingStick = createStick(1, 'horizontal', rotatingStickMaterial); // Horizontal rotating stick, green
+        const extendingStick = createStick(1, 'horizontal', extendingStickMaterial); // Extending horizontal stick, blue
+
+        // Set initial positions and hierarchy
+        rotatingStick.position.z = 1; // Positioned at the top of the vertical stick
+        extendingStick.position.x = 1; // Positioned at the end of the rotating stick
+
+        // Add to scene
+        scene.add(verticalStick);
+        scene.add(rotatingStick);
+        rotatingStick.add(extendingStick);
+        verticalStick.add(rotatingStick);
+
+        // Create an Axes Helper to visualize coordinate system
+        const axesHelper = new THREE.AxesHelper(2);
+        scene.add(axesHelper);
+
+        // Set the camera for isometric view
+        camera.position.set(5, 5, 5);
+        camera.lookAt(scene.position);
+
+        // Control variables
+        let rotatingStickRotationSpeed = 0.01;
+        let extendingStickExtensionRate = 0.1;
+
+        const targetValues = {
+          verticalHeight: verticalStick.scale.z,
+          extendLength: extendingStick.scale.x,
+          rotationAngle: rotatingStick.rotation.z
+        };
+
+        // dat.GUI
+      const gui = new dat.GUI();
+      const controls = {
+          verticalHeight: 1,
+          extendLength: 1,
+          rotationAngle: 0
+      };
+     
+      const mapCoordinatesToRobot = (x, y, z) => {
+        // Vertical stick
+        const verticalStickHeight = z;
+        targetValues.verticalHeight = verticalStickHeight;
+        rotatingStick.scale.z = 1 / verticalStickHeight;
+
+        // Rotating stick
+        const angle = Math.atan2(y, x);
+        targetValues.rotationAngle = angle;
+
+        // Extending stick
+        const extendLength = Math.sqrt(x * x + y * y);
+        targetValues.extendLength = extendLength;
+
+        // Update the GUI
+        controls.verticalHeight = verticalStickHeight;
+        controls.rotationAngle = angle * 180 / Math.PI;
+        controls.extendLength = extendLength;
+        gui.__controllers.forEach(controller => controller.updateDisplay());
+
+        document.getElementById('coords').innerText = `x: ${x.toFixed(2)}, y: ${y.toFixed(2)}, z: ${z.toFixed(2)}`;
+      };
+
+      const mapRobotToCoordinates = () => {
+          return mapRawToCoordinates(verticalStick.scale.z, extendingStick.scale.x, rotatingStick.rotation.z);
+      };
+
+      const mapRawToCoordinates = (verticalHeight, extendLength, rotationAngle) => {
+          // Vertical stick
+          const z = verticalHeight;
+
+          // Rotating stick
+          const angle = rotationAngle;
+          const x = Math.cos(angle);
+          const y = Math.sin(angle);
+
+          // Extending stick
+          const x2 = x * extendLength;
+          const y2 = y * extendLength;
+
+          const message = `x: ${x2.toFixed(2)}, y: ${y2.toFixed(2)}, z: ${z.toFixed(2)}`;
+          document.getElementById('coords').innerText = message;
+
+          controls.verticalHeight = verticalHeight;
+          controls.rotationAngle = rotationAngle * 180 / Math.PI;
+          controls.extendLength = extendLength;
+          gui.__controllers.forEach(controller => controller.updateDisplay());
+          return { x: x2, y: y2, z };
+      };
+
+      
+
+      
+      
+      gui.add(controls, 'verticalHeight', 1, 2).onChange(value => {
+        targetValues.verticalHeight = value;
+        rotatingStick.scale.z = 1 / value;
+        mapRobotToCoordinates();
+      });
+      gui.add(controls, 'extendLength', 0, 2).onChange(value => {
+        targetValues.extendLength = value;
+        const { x, y, z } = mapRobotToCoordinates();
+      });
+      gui.add(controls, 'rotationAngle', 0, 360).onChange(value => {
+        targetValues.rotationAngle = value * Math.PI / 180;
+        const { x, y, z } = mapRobotToCoordinates();
+      });
+   
+
+      // Animation loop
+      function animate() {
+          requestAnimationFrame(animate);
+          // Rotate the rotating stick
+          rotatingStick.rotation.z += ( targetValues.rotationAngle - rotatingStick.rotation.z ) * extendingStickExtensionRate;
+          extendingStick.scale.x += ( targetValues.extendLength - extendingStick.scale.x ) * extendingStickExtensionRate;
+          verticalStick.scale.z += ( targetValues.verticalHeight - verticalStick.scale.z ) * extendingStickExtensionRate;
+          
+          renderer.render(scene, camera);
+          //gui.__controllers.forEach(controller => controller.updateDisplay());
+      }
+      animate();
+
+        window.addEventListener('message', (event) => {
+          // Verifica el origen para seguridad
+          console.log("event.data", event.data);
+          const data = event.data;
+          if (data && typeof data === 'object' && data.method) {
+              switch (data.method) {
+                  case 'mapCoordinatesToRobot':
+                      if (data.x !== undefined && data.y !== undefined && data.z !== undefined) {
+                        console.log("data", data);
+                         mapCoordinatesToRobot(data.x, data.y, data.z);
+                         //gui.__controllers.forEach(controller => controller.updateDisplay());
+                      }
+                      break;
+                  case 'mapRobotToCoordinates':
+                      if (data.targetValues) {
+                          targetValues.verticalHeight = data.targetValues.verticalHeight;
+                          targetValues.extendLength = data.targetValues.extendLength;
+                          targetValues.rotationAngle = data.targetValues.rotationAngle* Math.PI / 180;
+                          mapRawToCoordinates(
+                            targetValues.verticalHeight,
+                            targetValues.extendLength,
+                            targetValues.rotationAngle
+                          );
+                      }
+                      break;
+                  default:
+                      console.log('Método no definido o no permitido.');
+              }
+          }
+      }, false);
+
+    </script>
+    <div id="coords" style="position: absolute; bottom: 10px; left: 10px; color: white; font-family: Arial, sans-serif;">
+        x: 0.00, y: 0.00, z: 1.00
+    </div>
+</body>
+</html>
+
+
+

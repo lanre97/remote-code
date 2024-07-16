@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { MqttProvider } from "@/contexts/mqtt";
+import NotificationProvider from "@/contexts/notifications";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -16,7 +18,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={`${inter.className} bg-slate-950  text-slate-100`}>
+        <header className="p-4 border-b border-slate-700">
+          <h1 className="font-bold uppercase">Remote Controller</h1>
+        </header>
+        <MqttProvider>
+          <NotificationProvider>
+            {children}
+          </NotificationProvider>
+        </MqttProvider>
+      </body>
     </html>
   );
 }
